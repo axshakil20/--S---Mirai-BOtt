@@ -1,40 +1,67 @@
-const request = require("request");
-const fs = require("fs");
-const axios = require("axios");
-
 module.exports.config = {
-  name: "kick",
-  version: "1.0.0",
-  hasPermssion: 0,
-  credits: "Kaneki",
-  description: "Kick the tagged friend",
-  commandCategory: "game",
-  usages: "[tag]",
-  cooldowns: 5,
+	name: "kick",
+	version: "1.2.0", 
+	hasPermssion: 0,
+	credits: "🔰𝗥𝗮𝗵𝗮𝘁_𝗜𝘀𝗹𝗮𝗺🔰",
+	description: "Remove a tagged person from the group",
+	commandCategory: "System", 
+	usages: "[tag]", 
+	cooldowns: 0,
 };
 
-module.exports.run = async({ api, event, Threads, global }) => {
-  const links = [    
-    "https://i.postimg.cc/65TSxJYD/2ce5a017f6556ff103bce87b273b89b7.gif",
-    "https://i.postimg.cc/65SP9jPT/Anime-083428-6224795.gif",
-    "https://i.postimg.cc/RFXP2XfS/jXOwoHx.gif",
-    "https://i.postimg.cc/jSPMRsNk/tumblr-nyc5ygy2a-Z1uz35lto1-540.gif",
-  ];
+module.exports.languages = {
+	"vi": {
+		"error": "Đã có lỗi xảy ra, vui lòng thử lại sau",
+		"needPermssion": "Cần quyền quản trị viên nhóm\nVui lòng thêm và thử lại!",
+		"missingTag": "Bạn phải tag người cần kick"
+	},
+	"en": {
+		"error": "Error! An error occurred. Please try again later!",
+		"needPermssion": "Need group admin\nPlease add and try again!",
+		"missingTag": "You need to tag someone to kick"
+	}
+};
 
-  const mentions = Object.keys(event.mentions);
-  if (!mentions.length) return api.sendMessage("Please tag someone!", event.threadID, event.messageID);
+module.exports.run = async function({ api, event, getText }) {
+	try {
+		// 🧠 Step 1: Get group info directly from Facebook API
+		let threadInfo = await api.getThreadInfo(event.threadID);
 
-  const taggedName = event.mentions[mentions[0]].replace("@", "");
+		if (!threadInfo || !threadInfo.adminIDs) {
+			return api.sendMessage("⚠️ Could not get group admin list!", event.threadID);
+		}
 
-  const callback = () => {
-    api.sendMessage({
-      body: `${taggedName}, you just got kicked! 😆`,
-      mentions: [{ tag: taggedName, id: mentions[0] }],
-      attachment: fs.createReadStream(__dirname + "/cache/kick.gif")
-    }, event.threadID, () => fs.unlinkSync(__dirname + "/cache/kick.gif"));
-  };
+		// 🧠 Step 2: Check if bot is admin
+		if (!threadInfo.adminIDs.some(item => item.id == api.getCurrentUserID())) {
+			return api.sendMessage(getText("needPermssion"), event.threadID, event.messageID);
+		}
 
-  return request(encodeURI(links[Math.floor(Math.random() * links.length)]))
-    .pipe(fs.createWriteStream(__dirname + "/cache/kick.gif"))
-    .on("close", () => callback());
+		// 🧠 Step 3: Check mentions
+		let mention = Object.keys(event.mentions);
+		if (!mention[0]) {
+			return api.sendMessage(getText("missingTag"), event.threadID, event.messageID);
+		}
+
+		// 🧠 Step 4: Check if sender is admin
+		if (!threadInfo.adminIDs.some(item => item.id == event.senderID)) {
+			return api.sendMessage("⚠️ You must be an admin to use this command!", event.threadID, event.messageID);
+		}
+
+		// 🧠 Step 5: Kick users
+		for (const id of mention) {
+			setTimeout(() => {
+				api.removeUserFromGroup(id, event.threadID, (err) => {
+					if (err) {
+						api.sendMessage(`❌ Failed to remove: ${event.mentions[id]}`, event.threadID);
+					} else {
+						api.sendMessage(`✅ Removed: ${event.mentions[id]}`, event.threadID);
+					}
+				});
+			}, 3000);
+		}
+
+	} catch (e) {
+		console.error("Kick command error:", e);
+		return api.sendMessage(`❌ Error: ${e.message || getText("error")}`, event.threadID);
+	}
 };
